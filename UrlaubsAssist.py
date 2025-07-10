@@ -1,7 +1,10 @@
-import json
+import tkinter as tk
+from tkinter import simpledialog, messagebox
 import os
-import time
-import csv
+import json
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment
+from openpyxl.utils import get_column_letter
 
 DATEI = "urlaube.json"
 STANDARD_URLAUBSTAGE = 30
@@ -14,8 +17,7 @@ def lade_daten():
     try:
         with open(DATEI, "r", encoding="utf-8") as f:
             return json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError):
-        print("Fehler beim Laden der Datei. Daten werden neu initialisiert.")
+    except:
         speichere_daten({"mitarbeiter": {}, "antraege": []})
         return {"mitarbeiter": {}, "antraege": []}
 
@@ -23,133 +25,134 @@ def speichere_daten(daten):
     with open(DATEI, "w", encoding="utf-8") as f:
         json.dump(daten, f, indent=2)
 
-def mitarbeiter_hinzufuegen():
-    name = input("Name des Mitarbeiters: ").strip()
+def mitarbeiter_hinzufuegen_gui():
+    name = simpledialog.askstring("Mitarbeiter hinzufügen", "Name des Mitarbeiters:")
     if not name:
-        print("Ungültiger Name.")
         return
-
     daten = lade_daten()
     if name in daten["mitarbeiter"]:
-        print("Mitarbeiter existiert bereits.")
+        messagebox.showwarning("Fehler", "Mitarbeiter existiert bereits.")
         return
-
-    eingabe = input(f"Urlaubstage für {name} (Enter für Standard = {STANDARD_URLAUBSTAGE}): ").strip()
-    if eingabe == "":
-        tage = STANDARD_URLAUBSTAGE
-    else:
-        try:
-            tage = int(eingabe)
-            if tage <= 0:
-                raise ValueError
-        except ValueError:
-            print("Ungültige Zahl für Urlaubstage.")
-            return
-
-    daten["mitarbeiter"][name] = {"urlaubstage": tage}
-    speichere_daten(daten)
-    print(f"{name} wurde mit {tage} Urlaubstagen hinzugefügt.")
-
-def urlaub_beantragen():
-    name = input("Name des Mitarbeiters: ").strip()
+    eingabe = simpledialog.askstring("Urlaubstage", f"Urlaubstage für {name} (leer für Standard = {STANDARD_URLAUBSTAGE}):")
     try:
-        tage = int(input("Anzahl der Urlaubstage: ").strip())
+        tage = int(eingabe) if eingabe else STANDARD_URLAUBSTAGE
         if tage <= 0:
             raise ValueError
-    except ValueError:
-        print("Bitte eine gültige positive Zahl eingeben.")
+    except:
+        messagebox.showerror("Fehler", "Ungültige Zahl für Urlaubstage.")
         return
+    daten["mitarbeiter"][name] = {"urlaubstage": tage}
+    speichere_daten(daten)
+    messagebox.showinfo("Erfolg", f"{name} mit {tage} Urlaubstagen hinzugefügt.")
 
+def urlaub_beantragen_gui():
+    name = simpledialog.askstring("Urlaubsantrag", "Name des Mitarbeiters:")
+    if not name:
+        return
+    try:
+        tage = int(simpledialog.askstring("Tage", "Anzahl der Urlaubstage:"))
+        if tage <= 0:
+            raise ValueError
+    except:
+        messagebox.showerror("Fehler", "Bitte eine gültige positive Zahl eingeben.")
+        return
     daten = lade_daten()
     if name not in daten["mitarbeiter"]:
-        print("Mitarbeiter nicht gefunden.")
+        messagebox.showwarning("Fehler", "Mitarbeiter nicht gefunden.")
         return
-
     daten["antraege"].append({"name": name, "tage": tage, "status": "offen"})
     speichere_daten(daten)
-    print(f"Urlaubsantrag für {name} gespeichert.")
+    messagebox.showinfo("Gespeichert", "Urlaubsantrag gespeichert.")
 
-def antraege_anzeigen():
+def antraege_anzeigen_gui():
     daten = lade_daten()
     antraege = daten.get("antraege", [])
     if not antraege:
-        print("Keine Anträge vorhanden.")
+        messagebox.showinfo("Info", "Keine Anträge vorhanden.")
         return
-    for i, antrag in enumerate(antraege):
-        print(f"{i}: {antrag['name']} - {antrag['tage']} Tage ({antrag['status']})")
+    text = "\n".join(f"{i}: {a['name']} - {a['tage']} Tage ({a['status']})" for i, a in enumerate(antraege))
+    messagebox.showinfo("Anträge", text)
 
-def antrag_bearbeiten():
+def antrag_bearbeiten_gui():
     daten = lade_daten()
     antraege = daten["antraege"]
     if not antraege:
-        print("Keine Anträge zu bearbeiten.")
+        messagebox.showinfo("Info", "Keine Anträge zu bearbeiten.")
         return
-    antraege_anzeigen()
-    try:
-        index = int(input("Antragsnummer zur Bearbeitung: ").strip())
-        if not (0 <= index < len(antraege)):
-            raise IndexError
-    except (ValueError, IndexError):
-        print("Ungültige Eingabe.")
+    index = simpledialog.askinteger("Bearbeiten", f"Antragsnummer (0 - {len(antraege)-1}):")
+    if index is None or not (0 <= index < len(antraege)):
+        messagebox.showerror("Fehler", "Ungültige Nummer.")
         return
     antrag = antraege[index]
-    entscheidung = input("Genehmigen (g) oder Ablehnen (a)? ").strip().lower()
-    if entscheidung == "g":
+    entscheidung = messagebox.askquestion("Bearbeiten", f"{antrag['name']} - {antrag['tage']} Tage\nGenehmigen?")
+    if entscheidung == "yes":
         name = antrag["name"]
         tage = antrag["tage"]
-        resttage = daten["mitarbeiter"][name]["urlaubstage"]
-        if resttage >= tage:
+        rest = daten["mitarbeiter"][name]["urlaubstage"]
+        if rest >= tage:
             daten["mitarbeiter"][name]["urlaubstage"] -= tage
             antrag["status"] = "genehmigt"
-            print("Antrag genehmigt.")
+            messagebox.showinfo("Genehmigt", "Antrag genehmigt.")
         else:
-            print(f"Nicht genügend Urlaubstage (verfügbar: {resttage}).")
-    elif entscheidung == "a":
-        antrag["status"] = "abgelehnt"
-        print("Antrag abgelehnt.")
+            messagebox.showwarning("Fehler", f"Nicht genügend Urlaubstage (verfügbar: {rest}).")
     else:
-        print("Ungültige Eingabe.")
+        antrag["status"] = "abgelehnt"
+        messagebox.showinfo("Abgelehnt", "Antrag abgelehnt.")
     speichere_daten(daten)
 
-def exportiere_csv_daten():
+def exportiere_excel_daten():
     daten = lade_daten()
+    wb = Workbook()
+    ws_mitarbeiter = wb.active
+    ws_mitarbeiter.title = "Mitarbeiter"
+    ws_mitarbeiter.append(["Name", "Verfügbare Urlaubstage", "Genommene Urlaubstage", "Verbleibende Urlaubstage"])
+    genommene_tage = {}
+    for antrag in daten["antraege"]:
+        if antrag["status"] == "genehmigt":
+            name = antrag["name"]
+            tage = antrag["tage"]
+            genommene_tage[name] = genommene_tage.get(name, 0) + tage
+    for name, info in daten["mitarbeiter"].items():
+        genommen = genommene_tage.get(name, 0)
+        ws_mitarbeiter.append([name, info["urlaubstage"] + genommen, genommen, info["urlaubstage"]])
+    spaltenbreiten = [25, 25, 25, 35]
+    for i, breite in enumerate(spaltenbreiten, start=1):
+        ws_mitarbeiter.column_dimensions[get_column_letter(i)].width = breite
+    for row in ws_mitarbeiter.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center")
+    for cell in ws_mitarbeiter["1:1"]:
+        cell.font = Font(bold=True)
+    ws_antraege = wb.create_sheet(title="Anträge")
+    ws_antraege.append(["Name", "Tage", "Status"])
+    for antrag in daten["antraege"]:
+        ws_antraege.append([antrag["name"], antrag["tage"], antrag["status"]])
+    for col in range(1, 4):
+        ws_antraege.column_dimensions[get_column_letter(col)].width = 30
+    for row in ws_antraege.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center")
+    for cell in ws_antraege["1:1"]:
+        cell.font = Font(bold=True)
+    wb.save("urlaubsverwaltung.xlsx")
+    messagebox.showinfo("Erfolg", "Excel-Datei erstellt: urlaubsverwaltung.xlsx")
 
-    with open("mitarbeiter.csv", "w", newline='', encoding="utf-8-sig") as f:
-        writer = csv.writer(f, delimiter=';')
-        writer.writerow(["Name", "Verbleibende Urlaubstage"])
-        for name, info in daten["mitarbeiter"].items():
-            writer.writerow([name, info["urlaubstage"]])
+def starte_gui():
+    root = tk.Tk()
+    root.title("Urlaubsverwaltung")
+    root.geometry("300x400")
 
-    with open("antraege.csv", "w", newline='', encoding="utf-8-sig") as f:
-        writer = csv.writer(f, delimiter=';')
-        writer.writerow(["Name", "Tage", "Status"])
-        for antrag in daten["antraege"]:
-            writer.writerow([antrag["name"], antrag["tage"], antrag["status"]])
+    tk.Label(root, text="Urlaubsverwaltung", font=("Arial", 16, "bold")).pack(pady=20)
 
-    print("CSV-Daten wurden erfolgreich exportiert.")
+    tk.Button(root, text="Mitarbeiter hinzufügen", width=25, command=mitarbeiter_hinzufuegen_gui).pack(pady=5)
+    tk.Button(root, text="Urlaubsantrag stellen", width=25, command=urlaub_beantragen_gui).pack(pady=5)
+    tk.Button(root, text="Anträge anzeigen", width=25, command=antraege_anzeigen_gui).pack(pady=5)
+    tk.Button(root, text="Antrag bearbeiten", width=25, command=antrag_bearbeiten_gui).pack(pady=5)
+    tk.Button(root, text="Excel exportieren", width=25, command=exportiere_excel_daten).pack(pady=5)
+    tk.Button(root, text="Beenden", width=25, command=root.destroy).pack(pady=20)
 
-def menue():
-    while True:
-        print("\n[1] Mitarbeiter hinzufügen\n[2] Urlaubsantrag stellen\n[3] Anträge anzeigen\n[4] Antrag bearbeiten\n[5] CSV exportieren\n[6] Beenden")
-        wahl = input("Wählen Sie eine Option (1-6): ").strip()
-        if wahl == "1":
-            mitarbeiter_hinzufuegen()
-        elif wahl == "2":
-            urlaub_beantragen()
-        elif wahl == "3":
-            antraege_anzeigen()
-        elif wahl == "4":
-            antrag_bearbeiten()
-        elif wahl == "5":
-            exportiere_csv_daten()
-        elif wahl == "6":
-            exportiere_csv_daten()
-            print("Programm beendet.")
-            break
-        else:
-            print("Ungültige Eingabe.")
-        time.sleep(1)
+    root.mainloop()
 
 if __name__ == "__main__":
     initialisiere_datei()
-    menue()
+    starte_gui()
